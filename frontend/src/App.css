@@ -1,3 +1,67 @@
+/* --- Added: ensure full width/height so layouts can span the screen --- */
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+/* ---------- Modern UI helpers (safe to add) ---------- */
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-highlight: rgba(255, 255, 255, 0.06);
+
+  --shadow-elev-1: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-elev-2: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.9);
+  outline-offset: 3px;
+}
+
+/* A consistent glass card surface used across the app */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-elev-1);
+}
+
+.glass:hover {
+  background: color-mix(in srgb, var(--glass-bg) 80%, rgba(255, 255, 255, 0.06));
+}
+
+/* Optional: nicer scrollbars (desktop) */
+@media (pointer: fine) {
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    border: 2px solid rgba(0, 0, 0, 0.35);
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.20);
+  }
+  *::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* -------------------- Your existing CSS (kept) -------------------- */
 .counter {
   font-size: 16px;
   padding: 5px 10px;

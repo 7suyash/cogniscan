@@ -1,96 +1,452 @@
-import React, { useState } from 'react';
-import Header from './components/Header';
-import AudioRecorder from './components/AudioRecorder';
-import ResultsView from './components/ResultsView';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import {
+  Mic,
+  Square,
+  Loader2,
+  Sparkles,
+  Trash2,
+  AudioLines,
+  ArrowRight,
+  Activity,
+  CheckCircle2,
+  MessageCircle,
+  FileText,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-function App() {
-  const [analysis, setAnalysis] = useState(null);
+/* ------------------------- AudioRecorder (your component) ------------------------- */
+const AudioRecorder = ({ onAnalysisComplete }) => {
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState(null);
+  const [timer, setTimer] = useState(0);
 
-  const handleAnalysisComplete = (data) => {
-    setAnalysis(data);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const timerIntervalRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const status = useMemo(() => {
+    if (isAnalyzing) {
+      return {
+        label: 'Analyzing',
+        tone: 'bg-indigo-500/10 text-indigo-200 border-indigo-400/20',
+      };
+    }
+    if (isRecording) {
+      return {
+        label: 'Recording',
+        tone: 'bg-red-500/10 text-red-200 border-red-400/20',
+      };
+    }
+    if (audioUrl) {
+      return {
+        label: 'Ready',
+        tone: 'bg-emerald-500/10 text-emerald-200 border-emerald-400/20',
+      };
+    }
+    return { label: 'Idle', tone: 'bg-white/5 text-white/70 border-white/10' };
+  }, [isAnalyzing, isRecording, audioUrl]);
+
+  const startRecording = async () => {
+    setError(null);
+
+    // reset old audio if any
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioBlob(null);
+    setAudioUrl(null);
+    audioChunksRef.current = [];
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setAudioBlob(blob);
+        setAudioUrl(url);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setTimer(0);
+
+      timerIntervalRef.current = setInterval(() => setTimer((prev) => prev + 1), 1000);
+    } catch (err) {
+      setError('Microphone access denied or not available.');
+      // eslint-disable-next-line no-console
+      console.error(err);
+    }
   };
 
-  const handleReset = () => {
-    setAnalysis(null);
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    }
+  };
+
+  const resetRecording = () => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioBlob(null);
+    setAudioUrl(null);
+    setTimer(0);
+    setError(null);
+  };
+
+  const handleAnalyze = async () => {
+    if (!audioBlob) return;
+
+    setIsAnalyzing(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'recording.webm');
+
+    try {
+      const response = await fetch('http://localhost:5000/analyze', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error('Analysis failed. Please try again.');
+
+      const data = await response.json();
+      onAnalysisComplete(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white selection:bg-indigo-500/30 overflow-x-hidden">
-      {/* Background Decor */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full h-full -z-10 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[10%] right-[-5%] w-[30%] h-[30%] bg-purple-600/10 blur-[100px] rounded-full" />
+    <section className="w-full">
+      <div className="relative w-full overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-2xl shadow-black/30">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent" />
+        <div className="pointer-events-none absolute -top-24 -right-24 h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-purple-500/10 blur-3xl" />
+
+        <div className="relative p-5 sm:p-6 lg:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Assessment</p>
+              <h2 className="mt-1 text-xl font-semibold text-white/90">Voice Recording</h2>
+              <p className="mt-2 text-sm text-white/45 leading-relaxed">Record a short sample, then run an analysis.</p>
+            </div>
+
+            <span className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${status.tone}`}>
+              <span className="relative flex h-2 w-2">
+                <span
+                  className={`absolute inline-flex h-full w-full rounded-full ${
+                    isRecording ? 'bg-red-400 animate-ping' : 'bg-white/30'
+                  } opacity-60`}
+                />
+                <span className={`relative inline-flex h-2 w-2 rounded-full ${isRecording ? 'bg-red-300' : 'bg-white/30'}`} />
+              </span>
+              {status.label}
+            </span>
+          </div>
+
+          <div className="mt-8 flex flex-col items-center gap-5">
+            <div className="relative flex items-center justify-center">
+              <motion.div
+                animate={{
+                  opacity: isRecording ? 1 : 0.35,
+                  scale: isRecording ? [1, 1.06, 1] : 1,
+                }}
+                transition={{ duration: 1.6, repeat: isRecording ? Infinity : 0, ease: 'easeInOut' }}
+                className="absolute h-36 w-36 rounded-full border border-white/10 bg-white/[0.02]"
+              />
+
+              <AnimatePresence>
+                {isRecording && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    className="absolute -bottom-6 flex items-end gap-1.5"
+                    aria-hidden="true"
+                  >
+                    {Array.from({ length: 7 }).map((_, i) => (
+                      <motion.span
+                        key={i}
+                        className="w-1.5 rounded-full bg-red-300/80"
+                        animate={{ height: [6, 18, 10, 22, 8] }}
+                        transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.07 }}
+                      />
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <motion.button
+                whileHover={{ scale: isAnalyzing ? 1 : 1.05 }}
+                whileTap={{ scale: isAnalyzing ? 1 : 0.96 }}
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isAnalyzing}
+                className={[
+                  'relative z-10 grid h-24 w-24 place-items-center rounded-full shadow-xl',
+                  'ring-1 ring-white/10 transition-all',
+                  isRecording
+                    ? 'bg-gradient-to-b from-red-500 to-red-600 shadow-red-500/20 hover:from-red-400 hover:to-red-600'
+                    : 'bg-gradient-to-b from-indigo-500 to-purple-600 shadow-indigo-500/20 hover:from-indigo-400 hover:to-purple-600',
+                  isAnalyzing ? 'opacity-50 cursor-not-allowed' : '',
+                ].join(' ')}
+                aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+              >
+                {isRecording ? <Square fill="white" size={30} /> : <Mic size={30} className="text-white" />}
+              </motion.button>
+            </div>
+
+            <div className="flex flex-col items-center gap-1.5">
+              <span className={`text-3xl font-mono tracking-tight ${isRecording ? 'text-red-200' : 'text-white/70'}`}>
+                {formatTime(timer)}
+              </span>
+              <p className="text-sm text-white/40">
+                {isAnalyzing
+                  ? 'Running analysis…'
+                  : isRecording
+                    ? 'Recording in progress…'
+                    : audioUrl
+                      ? 'Preview your audio, then continue'
+                      : 'Tap to start recording'}
+              </p>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {audioUrl && !isRecording && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                className="mt-8"
+              >
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-white/70">
+                      <AudioLines size={16} className="text-white/60" />
+                      <span className="font-medium">Playback</span>
+                    </div>
+                    <span className="text-xs text-white/40">webm</span>
+                  </div>
+
+                  <audio src={audioUrl} controls className="w-full h-10 opacity-90" />
+                </div>
+
+                <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={resetRecording}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white/75 hover:bg-white/[0.07] transition-colors"
+                  >
+                    <Trash2 size={18} />
+                    Reset
+                  </button>
+
+                  <button
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing}
+                    className={[
+                      'flex-[1.35] inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold',
+                      'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500',
+                      'shadow-lg shadow-indigo-500/20 border border-white/10',
+                      'disabled:opacity-50 disabled:cursor-not-allowed transition-all',
+                    ].join(' ')}
+                  >
+                    {isAnalyzing ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
+                    {isAnalyzing ? 'Analyzing…' : 'Start Assessment'}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {error && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="mt-5">
+                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
+    </section>
+  );
+};
 
-      <Header />
+/* ------------------------- Insight card ------------------------- */
+const InsightCard = ({ icon: Icon, title, content, color, delay }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay, duration: 0.4, ease: 'easeOut' }}
+    whileHover={{ y: -3 }}
+    className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/25 p-5"
+  >
+    <div className="flex items-start gap-3">
+      <div className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-black/20">
+        <div className={`grid h-9 w-9 place-items-center rounded-lg ${color} bg-opacity-20`}>
+          <Icon className={color.replace('bg-', 'text-')} size={20} />
+        </div>
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold text-white/85">{title}</h3>
+        <p className="mt-2 text-sm text-white/70 leading-relaxed">{content || 'No data available.'}</p>
+      </div>
+    </div>
+  </motion.div>
+);
 
-      <main className="flex flex-col items-center pt-20 pb-32 px-6">
-        <AnimatePresence mode="wait">
-          {!analysis ? (
-            <motion.div 
-              key="landing"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="flex flex-col items-center gap-12 w-full max-w-2xl text-center"
+/* ------------------------- Results panel (right side) ------------------------- */
+const ResultsPanel = ({ analysis, onReset }) => {
+  if (!analysis) {
+    return (
+      <div className="w-full rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-2xl shadow-black/25 overflow-hidden relative">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent" />
+        <div className="relative p-6 lg:p-8">
+          <h3 className="text-lg font-semibold text-white/85">Results will appear here</h3>
+          <p className="mt-2 text-sm text-white/50 leading-relaxed">
+            Record a sample and start the assessment to view score, insights, suggestions, and transcription.
+          </p>
+
+          <div className="mt-6 grid grid-cols-2 gap-3 opacity-70">
+            <div className="h-20 rounded-2xl border border-white/10 bg-black/20" />
+            <div className="h-20 rounded-2xl border border-white/10 bg-black/20" />
+            <div className="h-20 rounded-2xl border border-white/10 bg-black/20" />
+            <div className="h-20 rounded-2xl border border-white/10 bg-black/20" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ backend response fields:
+  // { score, scores:{...}, analysis:{...}, transcript }
+  const score = analysis?.score ?? analysis?.scores?.overall ?? 0;
+  const scores = analysis?.scores || {};
+  const transcript = analysis?.transcript || '';
+
+  const qualAnalysis = analysis?.analysis || {};
+  const { fluency, confidence, clarity, suggestions } = qualAnalysis;
+
+  const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
+
+  return (
+    <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="w-full">
+      <div className="w-full rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-2xl shadow-black/25 overflow-hidden relative">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent" />
+
+        <div className="relative p-6 lg:p-8">
+          <h2 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">
+            Analysis Complete
+          </h2>
+          <p className="text-white/50 mt-2">Here are your personalized speech insights</p>
+
+          {/* ✅ SCORE UI */}
+          <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5">
+            <p className="text-xs uppercase tracking-[0.18em] text-white/45">Overall Score</p>
+
+            <div className="mt-2 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+              <div className="text-5xl font-black text-white/90 leading-none">
+                {safeScore}
+                <span className="text-lg font-semibold text-white/50">/100</span>
+              </div>
+
+              <div className="w-full sm:w-56">
+                <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-400 to-purple-400"
+                    style={{ width: `${safeScore}%` }}
+                  />
+                </div>
+                <div className="mt-2 text-xs text-white/50">
+                  Fluency: {scores.fluency ?? '-'} • Confidence: {scores.confidence ?? '-'} • Clarity: {scores.clarity ?? '-'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
+            <InsightCard icon={Activity} title="Fluency" content={fluency} color="bg-emerald-500" delay={0.06} />
+            <InsightCard icon={CheckCircle2} title="Confidence" content={confidence} color="bg-indigo-500" delay={0.12} />
+            <InsightCard icon={MessageCircle} title="Clarity" content={clarity} color="bg-cyan-500" delay={0.18} />
+            <InsightCard icon={Sparkles} title="Suggestions" content={suggestions} color="bg-amber-500" delay={0.24} />
+          </div>
+
+          <div className="mt-7">
+            <h3 className="text-lg font-bold flex items-center gap-2 text-white/90">
+              <FileText size={20} className="text-purple-300" />
+              Transcription
+            </h3>
+            <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-5 sm:p-6 italic text-white/75 leading-relaxed">
+              “{transcript || 'No transcription available.'}”
+            </div>
+          </div>
+
+          <div className="mt-8 flex justify-start sm:justify-end">
+            <button
+              onClick={onReset}
+              className="inline-flex items-center gap-2 rounded-2xl px-6 py-3 sm:px-8 sm:py-4 font-bold text-white
+                         border border-white/10 bg-gradient-to-r from-indigo-500 to-purple-600
+                         hover:from-indigo-400 hover:to-purple-500 transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              <div className="flex flex-col gap-4">
-                <span className="text-xs font-bold tracking-[0.3em] text-indigo-400 uppercase">
-                  Linguistic Analysis AI
-                </span>
-                <h2 className="text-5xl md:text-7xl font-black leading-tight bg-gradient-to-b from-white to-white/60 bg-clip-text text-transparent">
-                  Voice Health <br /> Assessment
-                </h2>
-                <p className="text-lg text-white/50 max-w-lg mx-auto leading-relaxed mt-4">
-                  Cogniscan analyzes your speech patterns in real-time to provide insights into cognitive health markers and linguistic fluency.
-                </p>
-              </div>
+              Perform Another Scan
+              <ArrowRight size={20} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.section>
+  );
+};
 
-              <div className="w-full max-w-md">
-                <AudioRecorder onAnalysisComplete={handleAnalysisComplete} />
-              </div>
+/* ------------------------- App layout (FULL SCREEN) ------------------------- */
+export default function App() {
+  const [analysis, setAnalysis] = useState(null);
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-12 w-full opacity-40 grayscale group-hover:grayscale-0 transition-all duration-700">
-                <div className="flex flex-col items-center gap-2">
-                   <div className="w-12 h-[1px] bg-white/20 mb-2" />
-                   <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Fast Transcription</span>
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                   <div className="w-12 h-[1px] bg-white/20 mb-2" />
-                   <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Risk Scoring</span>
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                   <div className="w-12 h-[1px] bg-white/20 mb-2" />
-                   <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Privacy First</span>
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                   <div className="w-12 h-[1px] bg-white/20 mb-2" />
-                   <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Expert Insights</span>
-                </div>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div 
-              key="results"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full flex-1"
-            >
-              <ResultsView analysis={analysis} onReset={handleReset} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+  return (
+    <div className="min-h-screen w-full">
+      {/* Background */}
+      <div className="fixed inset-0 -z-10 bg-gradient-to-br from-[#070A1A] via-[#070B2A] to-[#0A0620]" />
+      <div className="fixed inset-0 -z-10 opacity-40 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.18),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(168,85,247,0.14),transparent_55%)]" />
+
+      <main className="w-full px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
+        <div className="mb-6 lg:mb-10">
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white/90">Assessment</h1>
+          <p className="mt-3 max-w-3xl text-white/55 leading-relaxed">
+            Cogniscan analyzes your speech patterns in real-time to provide insights into cognitive health markers and linguistic fluency.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
+          <AudioRecorder onAnalysisComplete={setAnalysis} />
+          <ResultsPanel analysis={analysis} onReset={() => setAnalysis(null)} />
+        </div>
       </main>
-
-      {/* Experimental Tag */}
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 glass rounded-full border border-white/5 opacity-40 hover:opacity-100 cursor-help transition-all duration-300">
-        <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-        <span className="text-[10px] font-bold tracking-widest uppercase text-white/60">Experimental Demo • AI Generated</span>
-      </div>
     </div>
   );
 }
-
-export default App;
