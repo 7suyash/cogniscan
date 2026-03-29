@@ -1,5 +1,17 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Mic, Square, Loader2, Sparkles, Trash2, AudioLines, ArrowRight, Activity, CheckCircle2, MessageCircle, FileText } from 'lucide-react';
+import {
+  Mic,
+  Square,
+  Loader2,
+  Sparkles,
+  Trash2,
+  AudioLines,
+  ArrowRight,
+  Activity,
+  CheckCircle2,
+  MessageCircle,
+  FileText,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /* ------------------------- AudioRecorder (your component) ------------------------- */
@@ -143,9 +155,7 @@ const AudioRecorder = ({ onAnalysisComplete }) => {
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-white/45">Assessment</p>
               <h2 className="mt-1 text-xl font-semibold text-white/90">Voice Recording</h2>
-              <p className="mt-2 text-sm text-white/45 leading-relaxed">
-                Record a short sample, then run an analysis.
-              </p>
+              <p className="mt-2 text-sm text-white/45 leading-relaxed">Record a short sample, then run an analysis.</p>
             </div>
 
             <span className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${status.tone}`}>
@@ -277,15 +287,8 @@ const AudioRecorder = ({ onAnalysisComplete }) => {
 
           <AnimatePresence>
             {error && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                className="mt-5"
-              >
-                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {error}
-                </div>
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="mt-5">
+                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -295,7 +298,7 @@ const AudioRecorder = ({ onAnalysisComplete }) => {
   );
 };
 
-/* ------------------------- Results panel (right side) ------------------------- */
+/* ------------------------- Insight card ------------------------- */
 const InsightCard = ({ icon: Icon, title, content, color, delay }) => (
   <motion.div
     initial={{ opacity: 0, y: 16 }}
@@ -312,23 +315,22 @@ const InsightCard = ({ icon: Icon, title, content, color, delay }) => (
       </div>
       <div>
         <h3 className="text-sm font-semibold text-white/85">{title}</h3>
-        <p className="mt-2 text-sm text-white/70 leading-relaxed">
-          {content || 'No data available.'}
-        </p>
+        <p className="mt-2 text-sm text-white/70 leading-relaxed">{content || 'No data available.'}</p>
       </div>
     </div>
   </motion.div>
 );
 
+/* ------------------------- Results panel (right side) ------------------------- */
 const ResultsPanel = ({ analysis, onReset }) => {
   if (!analysis) {
     return (
-      <div className="w-full rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-2xl shadow-black/25 overflow-hidden">
+      <div className="w-full rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-2xl shadow-black/25 overflow-hidden relative">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent" />
         <div className="relative p-6 lg:p-8">
           <h3 className="text-lg font-semibold text-white/85">Results will appear here</h3>
           <p className="mt-2 text-sm text-white/50 leading-relaxed">
-            Record a sample and start the assessment to view insights, suggestions, and transcription.
+            Record a sample and start the assessment to view score, insights, suggestions, and transcription.
           </p>
 
           <div className="mt-6 grid grid-cols-2 gap-3 opacity-70">
@@ -342,18 +344,51 @@ const ResultsPanel = ({ analysis, onReset }) => {
     );
   }
 
-  const { transcript, analysis: qualAnalysis } = analysis || {};
-  const { fluency, confidence, clarity, suggestions } = qualAnalysis || {};
+  // ✅ backend response fields:
+  // { score, scores:{...}, analysis:{...}, transcript }
+  const score = analysis?.score ?? analysis?.scores?.overall ?? 0;
+  const scores = analysis?.scores || {};
+  const transcript = analysis?.transcript || '';
+
+  const qualAnalysis = analysis?.analysis || {};
+  const { fluency, confidence, clarity, suggestions } = qualAnalysis;
+
+  const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
 
   return (
     <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="w-full">
-      <div className="w-full rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-2xl shadow-black/25 overflow-hidden">
+      <div className="w-full rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-2xl shadow-black/25 overflow-hidden relative">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent" />
+
         <div className="relative p-6 lg:p-8">
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">
             Analysis Complete
           </h2>
           <p className="text-white/50 mt-2">Here are your personalized speech insights</p>
+
+          {/* ✅ SCORE UI */}
+          <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5">
+            <p className="text-xs uppercase tracking-[0.18em] text-white/45">Overall Score</p>
+
+            <div className="mt-2 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+              <div className="text-5xl font-black text-white/90 leading-none">
+                {safeScore}
+                <span className="text-lg font-semibold text-white/50">/100</span>
+              </div>
+
+              <div className="w-full sm:w-56">
+                <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-400 to-purple-400"
+                    style={{ width: `${safeScore}%` }}
+                  />
+                </div>
+                <div className="mt-2 text-xs text-white/50">
+                  Fluency: {scores.fluency ?? '-'} • Confidence: {scores.confidence ?? '-'} • Clarity: {scores.clarity ?? '-'}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
             <InsightCard icon={Activity} title="Fluency" content={fluency} color="bg-emerald-500" delay={0.06} />
@@ -395,21 +430,18 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full">
-      {/* Background (optional but helps fill empty space aesthetically) */}
+      {/* Background */}
       <div className="fixed inset-0 -z-10 bg-gradient-to-br from-[#070A1A] via-[#070B2A] to-[#0A0620]" />
       <div className="fixed inset-0 -z-10 opacity-40 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.18),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(168,85,247,0.14),transparent_55%)]" />
 
       <main className="w-full px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
         <div className="mb-6 lg:mb-10">
-          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white/90">
-            Assessment
-          </h1>
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white/90">Assessment</h1>
           <p className="mt-3 max-w-3xl text-white/55 leading-relaxed">
             Cogniscan analyzes your speech patterns in real-time to provide insights into cognitive health markers and linguistic fluency.
           </p>
         </div>
 
-        {/* Full-width responsive grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
           <AudioRecorder onAnalysisComplete={setAnalysis} />
           <ResultsPanel analysis={analysis} onReset={() => setAnalysis(null)} />

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Activity, MessageCircle, FileText, Sparkles, CheckCircle2, ArrowRight, BadgeCheck } from 'lucide-react';
+import { Activity, MessageCircle, FileText, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
 
 const InsightCard = ({ icon: Icon, title, content, color, delay }) => (
   <motion.div
@@ -25,18 +25,20 @@ const InsightCard = ({ icon: Icon, title, content, color, delay }) => (
         </div>
       </div>
 
-      <p className="text-sm text-white/70 leading-relaxed">
-        {content || 'No data available.'}
-      </p>
-
-      <div className="mt-1 h-px w-full bg-gradient-to-r from-white/10 via-white/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+      <p className="text-sm text-white/70 leading-relaxed">{content || 'No data available.'}</p>
     </div>
   </motion.div>
 );
 
-const ResultsView = ({ analysis, onReset }) => {
-  const { transcript, analysis: qualAnalysis } = analysis || {};
-  const { fluency, confidence, clarity, suggestions } = qualAnalysis || {};
+export default function ResultsView({ analysis, onReset }) {
+  // This matches your backend response in image6:
+  // { score: 20, scores: {...}, analysis: {...}, transcript: "..." }
+  const score = analysis?.score ?? analysis?.scores?.overall;
+  const scores = analysis?.scores || {};
+  const transcript = analysis?.transcript ?? '';
+
+  const qualAnalysis = analysis?.analysis || {};
+  const { fluency, confidence, clarity, suggestions } = qualAnalysis;
 
   return (
     <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="w-full">
@@ -44,6 +46,30 @@ const ResultsView = ({ analysis, onReset }) => {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent" />
 
         <div className="relative p-5 sm:p-6 lg:p-8">
+          {/* ---- FORCE VISIBLE SCORE (you will definitely see this) ---- */}
+          <div className="mb-6 rounded-2xl border border-white/10 bg-black/30 p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-white/45">Overall Score</p>
+                <div className="mt-2 text-5xl font-black text-white/90">
+                  {typeof score === 'number' ? score : Number(score) || 0}
+                  <span className="text-lg font-semibold text-white/50">/100</span>
+                </div>
+                <p className="mt-2 text-sm text-white/50">
+                  Fluency: {scores.fluency ?? '-'} • Confidence: {scores.confidence ?? '-'} • Clarity: {scores.clarity ?? '-'}
+                </p>
+              </div>
+
+              <div className="h-2 w-full sm:w-56 rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-indigo-400 to-purple-400"
+                  style={{ width: `${Math.max(0, Math.min(100, Number(score) || 0))}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          {/* ---------------------------------------------------------- */}
+
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">
@@ -51,28 +77,8 @@ const ResultsView = ({ analysis, onReset }) => {
               </h2>
               <p className="text-white/50 mt-2">Here are your personalized speech insights</p>
             </div>
-
-            <div className="hidden md:flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
-              <span className="h-2 w-2 rounded-full bg-emerald-300" />
-              Ready
-            </div>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5">
-            <div className="flex items-start gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/20">
-                <BadgeCheck className="text-white" size={22} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white/85">Scan completed successfully</p>
-                <p className="mt-1 text-sm text-white/50 leading-relaxed">
-                  Review each insight and try applying 1–2 suggestions in your next recording.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Insights Grid */}
           <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <InsightCard icon={Activity} title="Fluency" content={fluency} color="bg-emerald-500" delay={0.08} />
             <InsightCard icon={CheckCircle2} title="Confidence" content={confidence} color="bg-indigo-500" delay={0.16} />
@@ -80,20 +86,13 @@ const ResultsView = ({ analysis, onReset }) => {
             <InsightCard icon={Sparkles} title="Suggestions" content={suggestions} color="bg-amber-500" delay={0.32} />
           </div>
 
-          {/* Transcription */}
           <div className="mt-7">
             <h3 className="text-lg font-bold flex items-center gap-2 text-white/90">
               <FileText size={20} className="text-purple-300" />
               Transcription
             </h3>
-
-            <div className="mt-3 relative overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-5 sm:p-6">
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-transparent" />
-              <blockquote className="relative text-white/75 leading-relaxed">
-                <span className="text-white/40 mr-2">“</span>
-                <span className="italic">{transcript || 'No transcription available.'}</span>
-                <span className="text-white/40 ml-2">”</span>
-              </blockquote>
+            <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-5 sm:p-6 italic text-white/75 leading-relaxed">
+              “{transcript || 'No transcription available.'}”
             </div>
           </div>
 
@@ -112,6 +111,4 @@ const ResultsView = ({ analysis, onReset }) => {
       </div>
     </motion.section>
   );
-};
-
-export default ResultsView;
+}
