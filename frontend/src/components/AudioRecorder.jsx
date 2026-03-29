@@ -78,7 +78,7 @@ const AudioRecorder = ({ onAnalysisComplete }) => {
     setError(null);
 
     const formData = new FormData();
-    formData.append('audio', audioBlob, 'recording.webm');
+    formData.append('file', audioBlob, 'recording.webm');
 
     try {
       const response = await fetch('http://localhost:5000/analyze', {

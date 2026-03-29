@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { GoogleGenAI } = require('@google/genai');
+const Groq = require('groq-sdk');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -17,14 +17,23 @@ app.use(morgan('dev'));
 app.use(express.json());
 
 // Multer config
-const upload = multer({ dest: 'uploads/' });
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    const ext = file.originalname.split('.').pop() || 'webm';
+    cb(null, Date.now() + '.' + ext);
+  },
+});
+const upload = multer({ storage });
 
-// Initialize Gemini with new SDK
-const ai = new GoogleGenAI({ 
-  apiKey: process.env.GEMINI_API_KEY 
+// Initialize Groq
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
 });
 
-app.post('/analyze', upload.single('audio'), async (req, res) => {
+app.post('/analyze', upload.single('file'), async (req, res) => {
   console.log('Incoming analysis request...');
   try {
     if (!req.file) {
@@ -32,76 +41,59 @@ app.post('/analyze', upload.single('audio'), async (req, res) => {
       return res.status(400).json({ error: 'No audio file uploaded' });
     }
 
-    const audioPath = req.file.path;
-    const audioBuffer = fs.readFileSync(audioPath);
-    const audioBase64 = audioBuffer.toString('base64');
+    console.log('Received file:', req.file.path);
 
-    // 🧠 Add debug log to check if recording is too small
-    console.log(`Processing file: ${req.file.originalname}, mime: ${req.file.mimetype}`);
-    console.log(`File buffer size: ${audioBuffer.length} bytes`);
+    // 🎤 STEP 1: Speech-to-text
+    const transcription = await groq.audio.transcriptions.create({
+      file: fs.createReadStream(req.file.path),
+      model: 'whisper-large-v3',
+    });
 
-    if (audioBuffer.length < 5000) {
-      console.warn('⚠️ Audio file is VERY small. This might indicate an empty or broken recording.');
-    }
+    const text = transcription.text;
+    console.log('Transcript:', text);
 
-    console.log('Calling Gemini API (gemini-2.0-flash via @google/genai)...');
-
-    const prompt = `
-      Analyze this audio recording for cognitive health markers.
-      Provide the following in JSON format:
-      - Transcribe accurately.
-      - Calculate wordCount, repetitionRate (0-100), avgSentenceLength.
-      - Cognitive Risk Score (0-100): 0 is healthy, 100 is high risk.
-      - Breakdown: fluency, coherence, vocabulary.
-      Output ONLY a JSON object.
-    `;
-
-    // New SDK syntax: ai.models.generateContent
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: [
+    // 🤖 STEP 2: Analysis
+    const analysis = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `Analyze this speech and return JSON:
+{
+  "fluency": "",
+  "confidence": "",
+  "clarity": "",
+  "suggestions": ""
+}`
+        },
         {
           role: 'user',
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: req.file.mimetype || 'audio/webm',
-                data: audioBase64
-              }
-            }
-          ]
+          content: `Speech:\n${text}`
         }
       ]
     });
 
-    const text = response.text;
-    console.log('AI Response received.');
-    
-    // Extract JSON from the response
-    let analysis;
+    const result = analysis.choices[0].message.content;
+    let parsedResult = {};
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      analysis = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-    } catch (parseError) {
-      console.error('JSON Parse Error. Raw text:', text);
-      throw new Error(`Failed to parse analysis from AI. Raw: ${text}`);
+      parsedResult = JSON.parse(result);
+    } catch(e) {
+      console.error('Failed to parse JSON result:', result);
+      parsedResult = { raw: result };
     }
 
     // Clean up file
-    fs.unlinkSync(audioPath);
-    console.log('Analysis complete. Sending response.');
+    fs.unlinkSync(req.file.path);
 
-    res.json(analysis);
+    res.json({
+      transcript: text,
+      analysis: parsedResult,
+    });
 
   } catch (err) {
-    console.error('FULL ERROR:', err); // 👈 VERY IMPORTANT
-    // Send full details temporarily per request
-    res.status(500).json({ 
-      error: err.message, 
-      stack: err.stack,
-      status: err.status || 500
-    });
+    console.error('ERROR:', err);
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
